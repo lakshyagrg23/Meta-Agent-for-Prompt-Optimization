@@ -49,9 +49,16 @@ def test_render():
         metadata=PromptMetadata()
     )
 
+    email_data = {
+    "sender": "support-paypal-security@gmail.com",
+    "receiver": "user@gmail.com",
+    "subject": "Urgent Account Verification Required",
+    "body": "Your account will be suspended unless verified immediately."
+    }
+
     rendered = PromptRenderer.render_prompt(
         prompt_state,
-        "Your invoice is attached."
+        email_data
     )
 
     print(rendered)

@@ -13,15 +13,22 @@ architecture update:
     5. CHAIN OF THOUGHT
     6. EMAIL
 
+Emails are structured :class:`~src.core.prompt_state.EmailInput` objects
+with explicit ``sender``, ``receiver``, ``subject``, and ``body`` fields.
+Plain strings are also accepted for backward compatibility.
+
 Every call with identical inputs produces byte-for-byte identical output.
 No randomness, timestamps, or hidden state is introduced.
 """
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List, Union
 
-from src.core.prompt_state import FewShotExample, PromptState
+from src.core.prompt_state import EmailInput, FewShotExample, PromptState
+
+# Convenience alias used in type hints throughout this module.
+_EmailArg = Union[str, EmailInput, Dict[str, str]]
 
 # Section header template — single source of truth for formatting.
 _HEADER = "[{title}]"
@@ -43,7 +50,10 @@ class PromptRenderer:
     """
 
     @staticmethod
-    def render_prompt(prompt_state: PromptState, email: str) -> str:
+    def render_prompt(
+        prompt_state: PromptState,
+        email: _EmailArg,
+    ) -> str:
         """
         Render a complete LLM prompt from *prompt_state* and an *email*.
 
@@ -54,14 +64,25 @@ class PromptRenderer:
 
         Args:
             prompt_state: The current :class:`PromptState` to render.
-            email: Raw email text to be classified.
+            email: The email to classify.  Accepts:
+                   * :class:`EmailInput` — structured object (preferred).
+                   * :class:`dict` — keys ``sender``, ``receiver``,
+                     ``subject``, ``body`` are coerced to
+                     :class:`EmailInput` automatically.
+                   * :class:`str` — plain body text (legacy convenience).
 
         Returns:
             A single multi-line string representing the full prompt.
 
         Example::
 
-            prompt = PromptRenderer.render_prompt(state, raw_email_text)
+            email = EmailInput(
+                sender="attacker@evil.com",
+                receiver="victim@corp.com",
+                subject="Urgent: verify your account",
+                body="Click here immediately to avoid suspension.",
+            )
+            prompt = PromptRenderer.render_prompt(state, email)
             response = llm.generate(prompt)
         """
         sections: List[str] = [
@@ -155,26 +176,46 @@ class PromptRenderer:
         """
         Format one :class:`FewShotExample` as a numbered block.
 
-        Output format::
+        When ``example.email`` is a plain string the output is::
 
             Example {index}:
             Email: {email}
             Label: {label}
             Reason: {reason}
 
+        When ``example.email`` is an :class:`EmailInput` the email portion
+        expands to its four structured fields before the label and reason::
+
+            Example {index}:
+            Sender: {sender}
+            Receiver: {receiver}
+            Subject: {subject}
+            Body: {body}
+            Label: {label}
+            Reason: {reason}
+
         Args:
-            index: 1-based position of this example in the list.
+            index:   1-based position of this example in the list.
             example: The :class:`FewShotExample` to render.
 
         Returns:
             Formatted string for this single example.
         """
-        lines = [
-            f"Example {index}:",
-            f"Email: {example.email.strip()}",
-            f"Label: {example.label.strip()}",
-            f"Reason: {example.reason.strip()}",
-        ]
+        header = f"Example {index}:"
+
+        if isinstance(example.email, EmailInput):
+            email_lines = PromptRenderer._render_email_fields(example.email)
+        else:
+            email_lines = [f"Email: {example.email.strip()}"]
+
+        lines = (
+            [header]
+            + email_lines
+            + [
+                f"Label: {example.label.strip()}",
+                f"Reason: {example.reason.strip()}",
+            ]
+        )
         return "\n".join(lines)
 
     @staticmethod
@@ -193,17 +234,94 @@ class PromptRenderer:
         )
 
     @staticmethod
-    def _render_email(email: str) -> str:
+    def _render_email(email: _EmailArg) -> str:
         """
-        Render the EMAIL section containing the text to classify.
+        Render the EMAIL section containing the message to classify.
+
+        Accepts a structured :class:`EmailInput`, a plain ``dict`` with
+        the same four keys, or a plain string (renders as ``Body:`` only).
+        All paths produce output under the ``[EMAIL]`` header.
 
         Args:
-            email: Raw email body text.
+            email: Structured :class:`EmailInput`, compatible ``dict``,
+                   or a plain string.
 
         Returns:
-            Section string with header and stripped email text.
+            Section string under the ``[EMAIL]`` header.
+
+        Raises:
+            KeyError: If a ``dict`` is passed but is missing one of the
+                      required keys: ``sender``, ``receiver``, ``subject``,
+                      ``body``.
         """
-        return PromptRenderer._section("EMAIL TO CLASSIFY", email.strip())
+        coerced = PromptRenderer._coerce_email_input(email)
+        if isinstance(coerced, EmailInput):
+            body = "\n".join(PromptRenderer._render_email_fields(coerced))
+        else:
+            body = f"Body: {coerced.strip()}"
+        return PromptRenderer._section("EMAIL", body)
+
+    @staticmethod
+    def _coerce_email_input(email: _EmailArg) -> Union[EmailInput, str]:
+        """
+        Normalise any supported email representation to either an
+        :class:`EmailInput` or a plain string.
+
+        * ``EmailInput`` is returned as-is.
+        * A ``dict`` with keys ``sender``, ``receiver``, ``subject``,
+          ``body`` is converted to :class:`EmailInput`.
+        * Any other string is returned unchanged.
+
+        Args:
+            email: Raw email argument from the caller.
+
+        Returns:
+            :class:`EmailInput` or ``str``.
+
+        Raises:
+            KeyError: If a ``dict`` is missing a required field.
+        """
+        if isinstance(email, EmailInput):
+            return email
+        if isinstance(email, dict):
+            try:
+                return EmailInput(
+                    sender=email["sender"],
+                    receiver=email["receiver"],
+                    subject=email["subject"],
+                    body=email["body"],
+                )
+            except KeyError as exc:
+                raise KeyError(
+                    f"Email dict is missing required field: {exc}. "
+                    f"Expected keys: sender, receiver, subject, body."
+                ) from exc
+        return email  # plain str
+
+    @staticmethod
+    def _render_email_fields(email: EmailInput) -> List[str]:
+        """
+        Produce an ordered list of ``Field: value`` lines for an
+        :class:`EmailInput` object.
+
+        The order is fixed: Sender → Receiver → Subject → Body.  This
+        helper is shared by both the top-level email section and
+        individual few-shot example rendering so the format is always
+        identical.
+
+        Args:
+            email: A fully populated :class:`EmailInput` instance.
+
+        Returns:
+            List of strings, one per field, ready to be joined with
+            newlines.
+        """
+        return [
+            f"Sender: {email.sender.strip()}",
+            f"Receiver: {email.receiver.strip()}",
+            f"Subject: {email.subject.strip()}",
+            f"Body: {email.body.strip()}",
+        ]
 
     # ------------------------------------------------------------------
     # Formatting primitive

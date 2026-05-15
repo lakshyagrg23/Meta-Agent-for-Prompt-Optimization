@@ -6,12 +6,49 @@ Core dataclasses for structured bounded prompt memory.
 
 import copy
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Union
+
+
+@dataclass
+class EmailInput:
+    """
+    Structured representation of an email to be classified.
+
+    Using explicit fields instead of raw text prevents ambiguity
+    about where the subject ends and the body begins, and allows
+    the renderer to produce a consistently formatted prompt section.
+
+    Attributes:
+        sender:   Email address (or display name) of the sender.
+        receiver: Email address (or display name) of the recipient.
+        subject:  Subject line of the email.
+        body:     Full body text of the email.
+    """
+
+    sender: str
+    receiver: str
+    subject: str
+    body: str
 
 
 @dataclass
 class FewShotExample:
-    email: str
+    """
+    A single labeled example used in few-shot prompting.
+
+    The ``email`` field accepts either a plain string (legacy / simple
+    usage) or a fully structured :class:`EmailInput` object.  The
+    renderer handles both cases transparently.
+
+    Attributes:
+        email:            Email content — plain string or :class:`EmailInput`.
+        label:            Ground-truth classification label (e.g. ``"PHISHING"``).
+        reason:           Human-readable explanation of the label decision.
+        relevance_score:  Operator-assigned score used during bounded
+                          replacement; higher means more relevant to keep.
+    """
+
+    email: Union[str, "EmailInput"]
     label: str
     reason: str
     relevance_score: float = 0.0
