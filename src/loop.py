@@ -5,6 +5,7 @@ Orchestrates: data batching → Agent 1 → metrics → consistency (sampled)
               → mutation policy → Agent 2 → re-test → accept/reject → log
 """
 
+from asyncio import exceptions
 import os
 import json
 import hashlib
@@ -22,6 +23,7 @@ from src.config import (
     HIGH_FP_THRESHOLD,
     LOW_ACCURACY_THRESHOLD,
     LOW_CONSISTENCY_THRESHOLD,
+    MAX_PROMPT_TOKENS,
 )
 from src.data    import batch_generator, total_batches
 from src.agents  import classify_batch, generate_new_prompt
@@ -42,12 +44,26 @@ def _log_iteration(log_path: str, record: Dict) -> None:
         f.write(json.dumps(record) + "\n")
 
 
+def compute_j_score(
+    f1: float,
+    recall: float,
+    consistency: Optional[float],
+    prompt: str,
+) -> float:
+    """Calculate normalized optimization score J."""
+    cons = consistency if consistency is not None else 0.0
+    tokens = count_tokens(prompt)
+    prompt_cost = min(1.0, max(0.0, tokens / MAX_PROMPT_TOKENS))
+    score = 0.4 * f1 + 0.3 * recall + 0.2 * cons - 0.1 * prompt_cost
+    return round(score, 4)
+
+
 # ── Print helpers ──────────────────────────────────────────────────────────────
 
 _HEADER = (
     f"{'Iter':>4}  {'Batch':>9}  {'Acc':>6}  {'F1':>6}  "
     f"{'TP':>4}  {'TN':>4}  {'FP':>4}  {'FN':>4}  "
-    f"{'Cons':>6}  {'Tags':<28}  {'Accepted'}"
+    f"{'Cons':>6}  {'J_Score':>7}  {'Tags':<28}  {'Accepted'}"
 )
 _SEP = "─" * len(_HEADER)
 
@@ -61,12 +77,13 @@ def _print_row(
     accepted:    bool,
 ) -> None:
     cons_str = f"{m['consistency']:.3f}" if m["consistency"] is not None else "  —  "
+    j_str = f"{m['j_score']:.4f}" if m.get("j_score") is not None else "  —  "
     tags_str = ",".join(tags) if tags else "(none)"
     print(
         f"{iteration:>4}  {batch_start:>4}-{batch_end:<4}  "
         f"{m['accuracy']:>6.3f}  {m['f1']:>6.3f}  "
         f"{m['tp']:>4}  {m['tn']:>4}  {m['fp']:>4}  {m['fn']:>4}  "
-        f"{cons_str:>6}  {tags_str:<28}  {'✓ YES' if accepted else '✗ NO'}"
+        f"{cons_str:>6}  {j_str:>7}  {tags_str:<28}  {'✓ YES' if accepted else '✗ NO'}"
     )
 
 
@@ -154,6 +171,7 @@ def run_optimization(
         consistency = compute_consistency(classify_batch, current_state, consistency_batch)
         metrics["consistency"]         = consistency
         metrics["consistency_sampled"] = True
+        metrics["j_score"]             = compute_j_score(metrics["f1"], metrics["recall"], metrics["consistency"], current_state)
 
         # ── Step 3: Mutation policy ────────────────────────────────────────────
         policy = decide_mutation(metrics, batch, preds_1, fn_threshold, fp_threshold, acc_threshold, consistency_threshold)
@@ -171,20 +189,22 @@ def run_optimization(
         consistency_2 = compute_consistency(classify_batch, new_state, consistency_batch)
         new_metrics["consistency"] = consistency_2
         new_metrics["consistency_sampled"] = True
+        new_metrics["j_score"]             = compute_j_score(new_metrics["f1"], new_metrics["recall"], new_metrics["consistency"], new_state)
 
         # ── Step 6: Accept / Reject ────────────────────────────────────────────
         f1_delta = new_metrics["f1"] - metrics["f1"]
-        accepted = f1_delta > IMPROVEMENT_THRESHOLD
+        j_delta  = new_metrics["j_score"] - metrics["j_score"]
+        accepted = j_delta > IMPROVEMENT_THRESHOLD
 
         if accepted:
             current_state     = new_state
             no_improve_streak = 0
-            print(f"\n{'─'*20} [iter {iteration}] ACCEPTED NEW PROMPT (F1 Delta: +{f1_delta:.4f}) {'─'*20}")
+            print(f"\n{'─'*20} [iter {iteration}] ACCEPTED NEW PROMPT (F1 Delta: +{f1_delta:.4f}, J Delta: +{j_delta:.4f}) {'─'*20}")
             print(current_state)
             print(f"{'─'*80}\n")
         else:
             no_improve_streak += 1
-            print(f"\n{'─'*20} [iter {iteration}] REJECTED PROMPT (F1 Delta: {f1_delta:.4f}) {'─'*20}")
+            print(f"\n{'─'*20} [iter {iteration}] REJECTED PROMPT (F1 Delta: {f1_delta:.4f}, J Delta: {j_delta:.4f}) {'─'*20}")
             print(new_state)
             print(f"{'─'*80}\n")
 
@@ -203,6 +223,7 @@ def run_optimization(
             "mutation_tags":      policy["tags"],
             "metrics_after":      new_metrics,
             "f1_delta":           round(f1_delta, 4),
+            "j_delta":            round(j_delta, 4),
             "state_accepted":     accepted,
             "rationale":          rationale,
             "fn_threshold":       fn_threshold,

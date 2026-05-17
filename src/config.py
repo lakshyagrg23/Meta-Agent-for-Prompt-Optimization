@@ -6,7 +6,7 @@ Override MODEL_NAME and API_KEY via CLI args or environment variables.
 import os
 
 # ── Batch / Loop ───────────────────────────────────────────────────────────────
-BATCH_SIZE               = 12   # rows per iteration
+BATCH_SIZE               = 64   # rows per iteration
 MAX_ITERATIONS           = 10    # T — hard cap on loop iterations
 NO_IMPROVE_PATIENCE      = 3     # consecutive non-improving iterations before early stop
 
@@ -15,7 +15,7 @@ CONSISTENCY_RUNS         = 3     # how many times to re-run Agent 1 for consiste
 CONSISTENCY_SAMPLE_EVERY = 3     # measure consistency every Nth iteration (0-indexed)
 
 # ── Acceptance ─────────────────────────────────────────────────────────────────
-IMPROVEMENT_THRESHOLD    = 0.02  # min F1 delta for new_state to be accepted
+IMPROVEMENT_THRESHOLD    = 0.005  # min F1 delta for new_state to be accepted
 
 # ── Token Budget ───────────────────────────────────────────────────────────────
 MAX_PROMPT_TOKENS        = 800   # hard ceiling on any Agent 1 system prompt
