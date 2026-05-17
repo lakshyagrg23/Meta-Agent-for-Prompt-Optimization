@@ -18,6 +18,7 @@ from src.evaluation.consistency import (
     get_majority_label,
     consistency_to_signal,
 )
+from src.core.constants import LABEL_PHISHING, LABEL_SAFE
 
 
 def _approx(a: float, b: float, tol: float = 1e-6) -> bool:

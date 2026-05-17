@@ -18,6 +18,7 @@ from src.evaluation.metrics import (
     POSITIVE_LABEL,
     NEGATIVE_LABEL,
 )
+from src.core.constants import LABEL_PHISHING, LABEL_SAFE
 
 
 def _approx(a: float, b: float, tol: float = 1e-6) -> bool:

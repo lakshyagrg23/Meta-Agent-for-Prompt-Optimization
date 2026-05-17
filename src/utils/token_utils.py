@@ -67,8 +67,18 @@ def count_example_tokens(example: "FewShotExample") -> int:
     Returns:
         Combined token estimate for the example.
     """
+    from src.core.prompt_state import EmailInput
+    
+    email_text = ""
+    if isinstance(example.email, str):
+        email_text = example.email
+    elif isinstance(example.email, EmailInput):
+        email_text = f"{example.email.subject} {example.email.body}"
+    elif isinstance(example.email, dict):
+        email_text = f"{example.email.get('subject', '')} {example.email.get('body', '')}"
+        
     return (
-        estimate_token_count(example.email)
+        estimate_token_count(email_text)
         + estimate_token_count(example.label)
         + estimate_token_count(example.reason)
     )

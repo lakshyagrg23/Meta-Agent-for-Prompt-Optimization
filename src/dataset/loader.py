@@ -51,6 +51,8 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from src.core.constants import LABEL_PHISHING, LABEL_SAFE
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,16 +64,16 @@ logger = logging.getLogger(__name__)
 #: Keys are lower-cased before lookup; add entries here for new datasets.
 LABEL_MAP: Dict[str, str] = {
     # String variants
-    "phishing":   "PHISHING",
-    "spam":       "PHISHING",
-    "malicious":  "PHISHING",
-    "1":          "PHISHING",
+    "phishing":   LABEL_PHISHING,
+    "spam":       LABEL_PHISHING,
+    "malicious":  LABEL_PHISHING,
+    "1":          LABEL_PHISHING,
     # Safe / legitimate variants
-    "safe":       "SAFE",
-    "ham":        "SAFE",
-    "legitimate": "SAFE",
-    "benign":     "SAFE",
-    "0":          "SAFE",
+    "safe":       LABEL_SAFE,
+    "ham":        LABEL_SAFE,
+    "legitimate": LABEL_SAFE,
+    "benign":     LABEL_SAFE,
+    "0":          LABEL_SAFE,
 }
 
 

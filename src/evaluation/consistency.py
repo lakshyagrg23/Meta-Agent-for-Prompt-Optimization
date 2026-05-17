@@ -42,11 +42,13 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import List, Optional
 
+from src.core.constants import LABEL_PHISHING
+
 logger = logging.getLogger(__name__)
 
 # Tie-breaking preference: when two labels appear equally often, prefer
 # PHISHING (more conservative / lower false-negative risk).
-_TIE_PREFERRED: str = "PHISHING"
+_TIE_PREFERRED: str = LABEL_PHISHING
 
 
 # ---------------------------------------------------------------------------

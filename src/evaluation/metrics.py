@@ -38,14 +38,16 @@ from sklearn.metrics import (
     confusion_matrix,
 )
 
+from src.core.constants import LABEL_PHISHING, LABEL_SAFE, LABEL_LIST
+
 logger = logging.getLogger(__name__)
 
 # The positive class label used throughout.
-POSITIVE_LABEL: str = "PHISHING"
-NEGATIVE_LABEL: str = "SAFE"
+POSITIVE_LABEL: str = LABEL_PHISHING
+NEGATIVE_LABEL: str = LABEL_SAFE
 
 # Labels list used in every sklearn call so output is always in [SAFE, PHISHING] order.
-_LABELS: List[str] = [NEGATIVE_LABEL, POSITIVE_LABEL]
+_LABELS: List[str] = LABEL_LIST
 
 
 # ---------------------------------------------------------------------------

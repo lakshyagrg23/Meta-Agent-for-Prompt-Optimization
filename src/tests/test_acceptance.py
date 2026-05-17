@@ -13,10 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.optimization.acceptance import (
     AcceptanceStrategy,
-    W_F1, W_RECALL, W_CONSISTENCY, W_COST,
     DEFAULT_TOKEN_BUDGET_CEILING,
     _normalise_token_count,
 )
+from src.configs.objective_weights import W_F1, W_RECALL, W_CONSISTENCY, W_COST
 from src.evaluation.metrics import EvaluationMetrics
 
 
@@ -84,7 +84,7 @@ def test_normalise_negative_ceiling():
 # ---------------------------------------------------------------------------
 
 def test_score_formula_perfect_no_cost():
-    """Perfect metrics, zero tokens → J = 0.4 + 0.3 + 0.2 = 0.9."""
+    """Perfect metrics, zero tokens → J = W_F1 + W_RECALL + W_CONSISTENCY."""
     m = _make_metrics(f1=1.0, recall=1.0, consistency=1.0)
     score = AcceptanceStrategy.compute_score(m, prompt_token_count=0)
     expected = W_F1 * 1.0 + W_RECALL * 1.0 + W_CONSISTENCY * 1.0 - W_COST * 0.0
@@ -93,7 +93,7 @@ def test_score_formula_perfect_no_cost():
 
 
 def test_score_formula_zero_metrics():
-    """All-zero metrics, max cost → J = -0.1."""
+    """All-zero metrics, max cost → J = -W_COST."""
     m = _make_metrics(f1=0.0, recall=0.0, consistency=0.0)
     score = AcceptanceStrategy.compute_score(
         m,

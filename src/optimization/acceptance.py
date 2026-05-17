@@ -13,27 +13,15 @@ Optimization objective
 ----------------------
 ::
 
-    J(S) = 0.4 * F1
-         + 0.3 * Recall
-         + 0.2 * Consistency
-         - 0.1 * PromptCost
+    J(S) = W_F1 * F1  +  W_RECALL * Recall  +  W_CONSISTENCY * Consistency  −  W_COST * PromptCost
 
 Where::
 
     PromptCost = clamp(prompt_token_count / token_budget_ceiling, 0.0, 1.0)
 
-All four components are in [0.0, 1.0], so J(S) ∈ [−0.1, 1.0].
-
-Rationale for weights
----------------------
-* **F1 (0.4)** — primary signal; balances precision and recall.
-* **Recall (0.3)** — catching phishing is operationally more critical than
-  minimising false alarms; given higher weight than precision.
-* **Consistency (0.2)** — prompt stability is essential for research
-  reproducibility; an inconsistent prompt that scores well on one batch
-  may fail on another.
-* **PromptCost (−0.1)** — mild regularisation; discourages prompt bloat
-  without dominating the objective.
+Weights are defined in and imported from
+:mod:`src.configs.objective_weights` — the **single source of truth**.
+Do NOT redefine them here or at any other call site.
 
 Acceptance rule
 ---------------
@@ -57,28 +45,26 @@ from __future__ import annotations
 import logging
 
 from src.evaluation.metrics import EvaluationMetrics
+from src.configs.objective_weights import (
+    W_F1,
+    W_RECALL,
+    W_CONSISTENCY,
+    W_COST,
+    DEFAULT_TOKEN_BUDGET_CEILING,
+)
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Objective weights — single source of truth
-# ---------------------------------------------------------------------------
-
-#: Weight on F1 score.
-W_F1: float = 0.4
-
-#: Weight on recall (sensitivity to phishing).
-W_RECALL: float = 0.3
-
-#: Weight on consistency (prompt stability).
-W_CONSISTENCY: float = 0.2
-
-#: Penalty weight on normalised prompt token cost.
-W_COST: float = 0.1
-
-#: Default ceiling used to normalise raw token counts into [0, 1].
-#: Prompts at or above this threshold receive a PromptCost of 1.0.
-DEFAULT_TOKEN_BUDGET_CEILING: int = 2048
+# W_F1, W_RECALL, W_CONSISTENCY, W_COST, DEFAULT_TOKEN_BUDGET_CEILING are
+# re-exported here so existing callers that do
+#   from src.optimization.acceptance import W_F1, ...
+# continue to work without modification.
+__all__ = [
+    "AcceptanceStrategy",
+    "W_F1", "W_RECALL", "W_CONSISTENCY", "W_COST",
+    "DEFAULT_TOKEN_BUDGET_CEILING",
+    "_normalise_token_count",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -113,10 +99,9 @@ class AcceptanceStrategy:
 
         ::
 
-            J(S) = 0.4 * F1
-                 + 0.3 * Recall
-                 + 0.2 * Consistency
-                 - 0.1 * PromptCost
+            J(S) = W_F1 * F1  +  W_RECALL * Recall  +  W_CONSISTENCY * Consistency  −  W_COST * PromptCost
+
+        ::
 
             PromptCost = clamp(token_count / ceiling, 0.0, 1.0)
 
