@@ -1,0 +1,2 @@
+Classify email as "SAFE" or "PHISHING". Output ONLY valid JSON exactly like this:
+{"label": "SAFE", "reason": "brief reason"}

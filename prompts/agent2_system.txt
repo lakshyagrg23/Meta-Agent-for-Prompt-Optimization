@@ -1,0 +1,3 @@
+Improve phishing prompt. Output ONLY JSON:
+{"new_prompt":"...","token_count":0,"rationale":"..."}
+new_prompt limits: Role<30 tokens, Rules<50, Few-shot<120. Keep JSON output instruction.
