@@ -8,10 +8,6 @@ No LLM calls — pure rule-based logic.
 from typing import List, Dict, Optional
 
 from src.config import (
-    HIGH_FN_THRESHOLD,
-    HIGH_FP_THRESHOLD,
-    LOW_ACCURACY_THRESHOLD,
-    LOW_CONSISTENCY_THRESHOLD,
     FEW_SHOT_FN_COUNT,
     FEW_SHOT_FP_COUNT,
     FEW_SHOT_TN_COUNT,
@@ -31,6 +27,10 @@ def decide_mutation(
     metrics:     Dict,
     batch:       List[Dict],
     predictions: List[Dict],
+    fn_threshold: float,
+    fp_threshold: float,
+    acc_threshold: float,
+    consistency_threshold: float,
 ) -> Dict:
     """
     Deterministically decide which mutation tags to fire and which
@@ -40,6 +40,10 @@ def decide_mutation(
         metrics:     output of compute_metrics() (includes consistency).
         batch:       original batch rows with ground-truth labels.
         predictions: Agent 1 first-pass predictions [{id, label, reason}].
+        fn_threshold: dynamic False Negative rate threshold
+        fp_threshold: dynamic False Positive rate threshold
+        acc_threshold: dynamic accuracy threshold
+        consistency_threshold: dynamic consistency threshold
 
     Returns:
         {
@@ -61,7 +65,7 @@ def decide_mutation(
     batch_by_id  = {row["id"]: row for row in batch}
 
     # ── Rule 1: High False Negative Rate ──────────────────────────────────────
-    if fn_rate > HIGH_FN_THRESHOLD:
+    if fn_rate > fn_threshold:
         tags.add("few_shot_fn")
         tags.add("prompt_enrichment")
 
@@ -74,7 +78,7 @@ def decide_mutation(
         examples.extend(fn_rows)
 
     # ── Rule 2: High False Positive Rate ─────────────────────────────────────
-    if fp_rate > HIGH_FP_THRESHOLD:
+    if fp_rate > fp_threshold:
         tags.add("few_shot_balanced")
         tags.add("add_constraints")
 
@@ -96,11 +100,11 @@ def decide_mutation(
         examples.extend(tn_rows)
 
     # ── Rule 3: Low Consistency (only when sampled) ───────────────────────────
-    if consistency is not None and consistency < LOW_CONSISTENCY_THRESHOLD:
+    if consistency is not None and consistency < consistency_threshold:
         tags.add("add_constraints")
 
     # ── Rule 4: Low Accuracy ──────────────────────────────────────────────────
-    if accuracy < LOW_ACCURACY_THRESHOLD:
+    if accuracy < acc_threshold:
         tags.add("enrich_role")
         tags.add("prompt_enrichment")
 

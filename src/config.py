@@ -6,7 +6,7 @@ Override MODEL_NAME and API_KEY via CLI args or environment variables.
 import os
 
 # ── Batch / Loop ───────────────────────────────────────────────────────────────
-BATCH_SIZE               = 30   # rows per iteration
+BATCH_SIZE               = 12   # rows per iteration
 MAX_ITERATIONS           = 10    # T — hard cap on loop iterations
 NO_IMPROVE_PATIENCE      = 3     # consecutive non-improving iterations before early stop
 
@@ -22,9 +22,9 @@ MAX_PROMPT_TOKENS        = 800   # hard ceiling on any Agent 1 system prompt
 TIKTOKEN_ENCODING        = "cl100k_base"
 
 # ── Mutation Thresholds ────────────────────────────────────────────────────────
-HIGH_FN_THRESHOLD         = 0.20  # FN / (FN + TP) > this → few_shot_fn, prompt_enrichment
-HIGH_FP_THRESHOLD         = 0.20  # FP / (FP + TN) > this → few_shot_balanced, add_constraints
-LOW_ACCURACY_THRESHOLD    = 0.90  # accuracy < this → enrich_role, prompt_enrichment
+HIGH_FN_THRESHOLD         = 0.15  # FN / (FN + TP) > this → few_shot_fn, prompt_enrichment
+HIGH_FP_THRESHOLD         = 0.15  # FP / (FP + TN) > this → few_shot_balanced, add_constraints
+LOW_ACCURACY_THRESHOLD    = 0.95  # accuracy < this → enrich_role, prompt_enrichment
 LOW_CONSISTENCY_THRESHOLD = 0.85  # consistency < this → add_constraints
 
 # ── Few-Shot Example Counts ────────────────────────────────────────────────────

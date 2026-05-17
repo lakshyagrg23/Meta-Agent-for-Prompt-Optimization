@@ -180,6 +180,30 @@ def _format_examples(examples: List[Dict]) -> str:
     return "\n\n".join(parts)
 
 
+TAG_DESCRIPTIONS = {
+    "enrich_role": {
+        "desc": "- enrich_role: Enhance the expertise/role description of Agent 1 (e.g. expert security analyst).",
+        "limit": "- Role specification limit: <30 tokens"
+    },
+    "prompt_enrichment": {
+        "desc": "- prompt_enrichment: Add instructions to analyze specific phishing indicators (urgency, anomalies, links).",
+        "limit": "- Rules/Constraints limit: <50 tokens"
+    },
+    "add_constraints": {
+        "desc": "- add_constraints: Add strict explicit reasoning constraints and format rules to prevent mistakes.",
+        "limit": "- Rules/Constraints limit: <50 tokens"
+    },
+    "few_shot_fn": {
+        "desc": "- few_shot_fn: Add 2-3 of the provided FN (False Negative) examples to help Agent 1 catch missed phishing.",
+        "limit": "- Few-shot examples limit: <120 tokens"
+    },
+    "few_shot_balanced": {
+        "desc": "- few_shot_balanced: Add matching FP (False Positive) and TN (True Negative) examples side-by-side for contrast.",
+        "limit": "- Few-shot examples limit: <120 tokens"
+    }
+}
+
+
 def _build_optimize_user_prompt(
     current_prompt:  str,
     metrics:         Dict,
@@ -191,8 +215,29 @@ def _build_optimize_user_prompt(
         if m.get("consistency") is not None
         else "not measured this iteration"
     )
-    tags_str   = json.dumps(policy.get("tags", []))
+    tags       = policy.get("tags", [])
+    tags_str   = json.dumps(tags)
     examples   = _format_examples(policy.get("examples", []))
+
+    # Dynamically compile tag descriptions and limits
+    active_instructions = []
+    active_limits = [
+        "- Enforce the exact output JSON format instruction."
+    ]
+    seen_limits = set()
+    for tag in tags:
+        if tag in TAG_DESCRIPTIONS:
+            active_instructions.append(TAG_DESCRIPTIONS[tag]["desc"])
+            limit = TAG_DESCRIPTIONS[tag]["limit"]
+            if limit not in seen_limits:
+                active_limits.append(limit)
+                seen_limits.add(limit)
+
+    instructions_block = ""
+    if active_instructions:
+        instructions_block = "Apply the following MUTATION_TAGS when modifying the prompt:\n" + "\n".join(active_instructions) + "\n\n"
+
+    limits_block = "new_prompt constraints (strict):\n" + "\n".join(active_limits) + "\n\n"
 
     return (
         f"CURRENT_PROMPT:\n{current_prompt}\n\n"
@@ -206,6 +251,8 @@ def _build_optimize_user_prompt(
         f"  fp_rate    = {m.get('fp_rate', 0):.4f}\n"
         f"  consistency = {consistency_str}\n\n"
         f"MUTATION_TAGS: {tags_str}\n\n"
+        f"{instructions_block}"
+        f"{limits_block}"
         f"FEW_SHOT_EXAMPLES:\n{examples}\n\n"
         f"OUTPUT ONLY valid JSON with no extra text:\n"
         f'{{"new_prompt": "...", "token_count": <int>, "rationale": "..."}}'

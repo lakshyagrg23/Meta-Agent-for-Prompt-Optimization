@@ -18,6 +18,10 @@ from src.config import (
     CONSISTENCY_SAMPLE_EVERY,
     AGENT1_INIT_PROMPT,
     LOGS_DIR,
+    HIGH_FN_THRESHOLD,
+    HIGH_FP_THRESHOLD,
+    LOW_ACCURACY_THRESHOLD,
+    LOW_CONSISTENCY_THRESHOLD,
 )
 from src.data    import batch_generator, total_batches
 from src.agents  import classify_batch, generate_new_prompt
@@ -118,6 +122,12 @@ def run_optimization(
     history          = []
     stop_reason      = "max_iterations"
 
+    # Initialize dynamic thresholds
+    fn_threshold = HIGH_FN_THRESHOLD
+    fp_threshold = HIGH_FP_THRESHOLD
+    acc_threshold = LOW_ACCURACY_THRESHOLD
+    consistency_threshold = LOW_CONSISTENCY_THRESHOLD
+
     print(f"\n{'═'*80}")
     print(f"  Phishing Email Prompt Optimizer")
     print(f"  Dataset: {len(rows):,} rows  |  Batches: {n_batches}  |  Max iters: {max_iterations}")
@@ -139,15 +149,14 @@ def run_optimization(
         preds_1  = classify_batch(current_state, batch)
         metrics  = compute_metrics(preds_1, batch)
 
-        # ── Step 2: Consistency (sampled every Nth iteration) ─────────────────
-        # if iteration % CONSISTENCY_SAMPLE_EVERY == 0:
-        #     consistency = compute_consistency(classify_batch, current_state, batch)
-        #     metrics["consistency"]         = consistency
-        #     metrics["consistency_sampled"] = True
-        # else metrics["consistency"] stays None (set in compute_metrics)
+        # ── Step 2: Consistency (measured on sampled rows every iteration) ────
+        consistency_batch = batch[::CONSISTENCY_SAMPLE_EVERY]
+        consistency = compute_consistency(classify_batch, current_state, consistency_batch)
+        metrics["consistency"]         = consistency
+        metrics["consistency_sampled"] = True
 
         # ── Step 3: Mutation policy ────────────────────────────────────────────
-        policy = decide_mutation(metrics, batch, preds_1)
+        policy = decide_mutation(metrics, batch, preds_1, fn_threshold, fp_threshold, acc_threshold, consistency_threshold)
 
         # ── Step 4: Agent 2 → new prompt ──────────────────────────────────────
         print(f"  [iter {iteration}] Generating new prompt (tags: {policy['tags']}) …")
@@ -157,6 +166,11 @@ def run_optimization(
         print(f"  [iter {iteration}] Testing new prompt …")
         preds_2     = classify_batch(new_state, batch)
         new_metrics = compute_metrics(preds_2, batch)
+        
+        # Calculate consistency for the new prompt
+        consistency_2 = compute_consistency(classify_batch, new_state, consistency_batch)
+        new_metrics["consistency"] = consistency_2
+        new_metrics["consistency_sampled"] = True
 
         # ── Step 6: Accept / Reject ────────────────────────────────────────────
         f1_delta = new_metrics["f1"] - metrics["f1"]
@@ -165,8 +179,14 @@ def run_optimization(
         if accepted:
             current_state     = new_state
             no_improve_streak = 0
+            print(f"\n{'─'*20} [iter {iteration}] ACCEPTED NEW PROMPT (F1 Delta: +{f1_delta:.4f}) {'─'*20}")
+            print(current_state)
+            print(f"{'─'*80}\n")
         else:
             no_improve_streak += 1
+            print(f"\n{'─'*20} [iter {iteration}] REJECTED PROMPT (F1 Delta: {f1_delta:.4f}) {'─'*20}")
+            print(new_state)
+            print(f"{'─'*80}\n")
 
         # ── Step 7: Print row ─────────────────────────────────────────────────
         _print_row(iteration, batch_start, batch_end, metrics, policy["tags"], accepted)
@@ -185,9 +205,40 @@ def run_optimization(
             "f1_delta":           round(f1_delta, 4),
             "state_accepted":     accepted,
             "rationale":          rationale,
+            "fn_threshold":       fn_threshold,
+            "fp_threshold":       fp_threshold,
+            "acc_threshold":      acc_threshold,
+            "consistency_threshold": consistency_threshold,
         }
         _log_iteration(log_path, record)
         history.append(record)
+
+        # ── Step 8.5: Update dynamic thresholds for the NEXT iteration ──────────
+        active_metrics = new_metrics if accepted else metrics
+        
+        # Accuracy: if achieved >= threshold, raise the bar (threshold = previous_threshold + 1%)
+        if active_metrics["accuracy"] >= acc_threshold:
+            old_val = acc_threshold
+            acc_threshold = min(0.99, round(acc_threshold + 0.01, 4))
+            print(f"  [loop] Raised LOW_ACCURACY_THRESHOLD: {old_val:.4f} -> {acc_threshold:.4f}")
+
+        # FP Rate: if achieved <= threshold, raise the bar (threshold = previous_threshold - 1%)
+        if active_metrics["fp_rate"] <= fp_threshold:
+            old_val = fp_threshold
+            fp_threshold = max(0.0, round(fp_threshold - 0.01, 4))
+            print(f"  [loop] Lowered HIGH_FP_THRESHOLD: {old_val:.4f} -> {fp_threshold:.4f}")
+
+        # FN Rate: if achieved <= threshold, raise the bar (threshold = previous_threshold - 1%)
+        if active_metrics["fn_rate"] <= fn_threshold:
+            old_val = fn_threshold
+            fn_threshold = max(0.0, round(fn_threshold - 0.01, 4))
+            print(f"  [loop] Lowered HIGH_FN_THRESHOLD: {old_val:.4f} -> {fn_threshold:.4f}")
+
+        # Consistency: if achieved >= threshold, raise the bar (threshold = previous_threshold + 1%)
+        if active_metrics.get("consistency") is not None and active_metrics["consistency"] >= consistency_threshold:
+            old_val = consistency_threshold
+            consistency_threshold = min(0.99, round(consistency_threshold + 0.01, 4))
+            print(f"  [loop] Raised LOW_CONSISTENCY_THRESHOLD: {old_val:.4f} -> {consistency_threshold:.4f}")
 
         # ── Step 9: Stopping conditions ───────────────────────────────────────
         if no_improve_streak >= NO_IMPROVE_PATIENCE:

@@ -1,3 +1,4 @@
-Improve phishing prompt. Output ONLY JSON:
-{"new_prompt":"...","token_count":0,"rationale":"..."}
-new_prompt limits: Role<30 tokens, Rules<50, Few-shot<120. Keep JSON output instruction.
+You are a Meta-Agent optimizing a phishing detection prompt for another LLM (Agent 1).
+You MUST generate an improved prompt that strictly outputs in JSON.
+Output ONLY a JSON object in this exact schema:
+{"new_prompt": "string", "token_count": int, "rationale": "string"}
